@@ -1,49 +1,77 @@
 import streamlit as st
 import pandas as pd
 import datetime
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
 
 st.set_page_config(page_title="ניהול תזרים", layout="wide")
 
-# --- Initialize session state to store data ---
-if 'transactions' not in st.session_state:
-    st.session_state.transactions = pd.DataFrame(columns=[
-        'תאריך', 'סוג', 'סכום', 'מטבע', 'מקור', 'קטגוריה', 'תיאור']
-    )
+# --- חיבור ל־Google Sheets ---
+scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
+client = gspread.authorize(creds)
 
-if 'planned' not in st.session_state:
-    st.session_state.planned = pd.DataFrame(columns=['תאריך', 'סכום', 'תיאור'])
+# --- פרטי הגיליון ---
+sheet_id = "14P_Qe5E_DZmuqYSns6_Z2y4aSZ9-kH2r67FzYLAbXGw"
+transactions_ws = client.open_by_key(sheet_id).worksheet("transactions")
 
-if 'projects' not in st.session_state:
-    st.session_state.projects = pd.DataFrame(columns=['שם פרויקט', 'הוצאה מתוכננת', 'הוצאה בפועל'])
+# --- טעינת נתונים ---
+def load_data(ws, columns):
+    data = ws.get_all_records()
+    df = pd.DataFrame(data)
+    for col in columns:
+        if col not in df.columns:
+            df[col] = None
+    return df[columns]
 
-# --- Sidebar Navigation ---
+transactions_cols = ['תאריך', 'סוג', 'סכום', 'מטבע', 'מקור', 'קטגוריה', 'תיאור']
+transactions = load_data(transactions_ws, transactions_cols)
+
+# --- שמירת נתונים ---
+def save_data(ws, df):
+    ws.clear()
+    ws.update([df.columns.values.tolist()] + df.values.tolist())
+
+# --- תפריט צד ---
 st.sidebar.title("תפריט")
-page = st.sidebar.radio("עבור אל:", ["חזית", "רשומות", "פעולות עתידיות", "פרויקטים"])
+page = st.sidebar.radio("עבור אל:", ["חזית", "הוספה", "רשומות"])
 
-# --- Utility Function ---
-def format_money(amount, currency):
-    return f"{amount:,.2f} {currency}"
+# --- עיצוב סכום ---
+def format_money(val, currency):
+    try:
+        val = float(val)
+        return "{:,.2f} {}".format(val, currency)
+    except:
+        return f"{val} {currency}"
 
-# --- Page: חזית ---
+# ================================
+# === עמוד חזית (סיכום כללי) ===
+# ================================
 if page == "חזית":
     st.title("🎯 ניהול תזרים")
-    
-    df = st.session_state.transactions
+
+    df = transactions.copy()
+    df['סכום'] = pd.to_numeric(df['סכום'], errors='coerce').fillna(0)
 
     col1, col2, col3 = st.columns(3)
     with col1:
-        payoneer_sum = df[(df['מקור'] == 'פיוניר') & (df['סוג'] == 'הכנסה')]['סכום'].sum()
-        payoneer_exp = df[(df['מקור'] == 'פיוניר') & (df['סוג'] == 'הוצאה')]['סכום'].sum()
-        st.metric("פיוניר", format_money(payoneer_sum - payoneer_exp, '$'))
+        p_in = df[(df['מקור'] == 'פיוניר') & (df['סוג'] == 'הכנסה')]['סכום'].sum()
+        p_out = df[(df['מקור'] == 'פיוניר') & (df['סוג'] == 'הוצאה')]['סכום'].sum()
+        st.metric("פיוניר", format_money(p_in - p_out, '$'))
     with col2:
-        bank_sum = df[(df['מקור'] == 'ישראלי') & (df['סוג'] == 'הכנסה')]['סכום'].sum()
-        bank_exp = df[(df['מקור'] == 'ישראלי') & (df['סוג'] == 'הוצאה')]['סכום'].sum()
-        st.metric("ישראלי", format_money(bank_sum - bank_exp, '₪'))
+        b_in = df[(df['מקור'] == 'ישראלי') & (df['סוג'] == 'הכנסה')]['סכום'].sum()
+        b_out = df[(df['מקור'] == 'ישראלי') & (df['סוג'] == 'הוצאה')]['סכום'].sum()
+        st.metric("ישראלי", format_money(b_in - b_out, '₪'))
     with col3:
-        total = (payoneer_sum - payoneer_exp)*3.8 + (bank_sum - bank_exp)  # conversion to NIS
+        total = (p_in - p_out) * 3.8 + (b_in - b_out)
         st.metric("מאזן כולל (₪)", format_money(total, '₪'))
 
-    st.subheader("📥 הוספת הכנסה / הוצאה")
+# ================================
+# === עמוד הוספה (טופס חדש) ===
+# ================================
+elif page == "הוספה":
+    st.title("📥 הוספת הכנסה / הוצאה")
+
     with st.form("form_transaction"):
         col1, col2, col3 = st.columns(3)
         with col1:
@@ -58,98 +86,27 @@ if page == "חזית":
             description = st.text_input("תיאור נוסף")
 
         submitted = st.form_submit_button("הוספה")
+
         if submitted:
-            st.session_state.transactions = pd.concat([
-                st.session_state.transactions,
-                pd.DataFrame.from_records([{
-                    'תאריך': date,
-                    'סוג': kind,
-                    'סכום': amount,
-                    'מטבע': currency,
-                    'מקור': source,
-                    'קטגוריה': category,
-                    'תיאור': description
-                }])
-            ], ignore_index=True)
-            st.success("הרשומה נוספה בהצלחה ✅")
+            new_row = pd.DataFrame.from_records([{
+                'תאריך': date.strftime('%Y-%m-%d'),
+                'סוג': kind,
+                'סכום': amount,
+                'מטבע': currency,
+                'מקור': source,
+                'קטגוריה': category,
+                'תיאור': description
+            }])
+            transactions = pd.concat([transactions, new_row], ignore_index=True)
+            save_data(transactions_ws, transactions)
+            st.success("✅ נשמר בהצלחה ל־Google Sheets!")
 
-# --- Page: רשומות ---
+# ================================
+# === עמוד רשומות (טבלה מלאה) ===
+# ================================
 elif page == "רשומות":
-    st.title("📒 כל הרשומות")
-    df = st.session_state.transactions.copy()
+    st.title("📋 כל הרשומות")
+    df = transactions.copy()
     df['תאריך'] = pd.to_datetime(df['תאריך'], errors='coerce')
-
-    with st.expander("פילטרים"):
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            kind_filter = st.selectbox("סוג פעולה", ['הכל', 'הכנסה', 'הוצאה'])
-        with col2:
-            source_filter = st.selectbox("מקור", ['הכל', 'פיוניר', 'ישראלי'])
-        with col3:
-            month_filter = st.selectbox("חודש", ['הכל'] + list(df['תאריך'].dropna().dt.strftime('%Y-%m').unique()))
-
-    filtered_df = df.copy()
-    if kind_filter != 'הכל':
-        filtered_df = filtered_df[filtered_df['סוג'] == kind_filter]
-    if source_filter != 'הכל':
-        filtered_df = filtered_df[filtered_df['מקור'] == source_filter]
-    if month_filter != 'הכל':
-        filtered_df = filtered_df[filtered_df['תאריך'].dt.strftime('%Y-%m') == month_filter]
-
-    st.dataframe(filtered_df.sort_values(by='תאריך', ascending=False), use_container_width=True)
-
-# --- Page: פעולות עתידיות ---
-elif page == "פעולות עתידיות":
-    st.title("📆 פעולות עתידיות")
-
-    with st.form("planned_form"):
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            p_date = st.date_input("תאריך מתוכנן", datetime.date.today())
-        with col2:
-            p_amount = st.number_input("סכום מתוכנן", min_value=0.0, format="%.2f")
-        with col3:
-            p_desc = st.text_input("תיאור")
-        submit_plan = st.form_submit_button("הוסף תכנון")
-
-        if submit_plan:
-            st.session_state.planned = pd.concat([
-                st.session_state.planned,
-                pd.DataFrame.from_records([{
-                    'תאריך': p_date,
-                    'סכום': p_amount,
-                    'תיאור': p_desc
-                }])
-            ], ignore_index=True)
-            st.success("הפעולה נוספה לתכנון ✅")
-
-    st.subheader("רשימת פעולות עתידיות")
-    st.dataframe(st.session_state.planned.sort_values(by='תאריך'), use_container_width=True)
-
-# --- Page: פרויקטים ---
-elif page == "פרויקטים":
-    st.title("🚧 פרויקטים")
-
-    with st.form("project_form"):
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            project_name = st.text_input("שם פרויקט")
-        with col2:
-            planned_budget = st.number_input("הוצאה מתוכננת", min_value=0.0, format="%.2f")
-        with col3:
-            actual_spent = st.number_input("הוצאה בפועל", min_value=0.0, format="%.2f")
-        submit_proj = st.form_submit_button("הוסף פרויקט")
-
-        if submit_proj:
-            st.session_state.projects = pd.concat([
-                st.session_state.projects,
-                pd.DataFrame.from_records([{
-                    'שם פרויקט': project_name,
-                    'הוצאה מתוכננת': planned_budget,
-                    'הוצאה בפועל': actual_spent
-                }])
-            ], ignore_index=True)
-            st.success("הפרויקט נוסף ✅")
-
-    st.subheader("רשימת פרויקטים")
-    st.dataframe(st.session_state.projects, use_container_width=True)
+    df = df.sort_values(by='תאריך', ascending=False)
+    st.dataframe(df, use_container_width=True)
