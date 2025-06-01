@@ -8,12 +8,12 @@ from oauth2client.service_account import ServiceAccountCredentials
 # הגדרות עמוד
 st.set_page_config(page_title="ניהול תזרים", layout="wide")
 
-# קביעת מסלול הקובץ
-CREDENTIALS_PATH = "JSON/credentials.json"  # שנה ל"credentials.json" אם הקובץ בתיקייה הראשית
+# קובץ ההרשאות
+CREDENTIALS_PATH = "credentials.json"
 
 # בדיקה אם הקובץ קיים
 if not os.path.exists(CREDENTIALS_PATH):
-    st.error("⚠️ הקובץ credentials.json לא נמצא. ודא שהוא נמצא בתיקייה JSON או שעדכן את השם בקוד.")
+    st.error("⚠️ הקובץ credentials.json לא נמצא בתיקיית הפרויקט. העלה אותו ונסה שוב.")
     st.stop()
 
 # חיבור ל־Google Sheets
@@ -21,7 +21,7 @@ scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/au
 creds = ServiceAccountCredentials.from_json_keyfile_name(CREDENTIALS_PATH, scope)
 client = gspread.authorize(creds)
 
-# מזהה הגיליון
+# מזהה הגיליון שלך
 sheet_id = "14P_Qe5E_DZmuqYSns6_Z2y4aSZ9-kH2r67FzYLAbXGw"
 transactions_ws = client.open_by_key(sheet_id).worksheet("transactions")
 
@@ -46,7 +46,7 @@ def save_data(ws, df):
 st.sidebar.title("תפריט")
 page = st.sidebar.radio("עבור אל:", ["חזית", "הוספה", "רשומות"])
 
-# פונקציית עיצוב סכום
+# עיצוב כספים
 def format_money(val, currency):
     try:
         val = float(val)
