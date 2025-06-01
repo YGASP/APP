@@ -2,20 +2,30 @@ import streamlit as st
 import pandas as pd
 import datetime
 import gspread
+import os
 from oauth2client.service_account import ServiceAccountCredentials
 
+# הגדרות עמוד
 st.set_page_config(page_title="ניהול תזרים", layout="wide")
 
-# --- חיבור ל־Google Sheets ---
+# קביעת מסלול הקובץ
+CREDENTIALS_PATH = "JSON/credentials.json"  # שנה ל"credentials.json" אם הקובץ בתיקייה הראשית
+
+# בדיקה אם הקובץ קיים
+if not os.path.exists(CREDENTIALS_PATH):
+    st.error("⚠️ הקובץ credentials.json לא נמצא. ודא שהוא נמצא בתיקייה JSON או שעדכן את השם בקוד.")
+    st.stop()
+
+# חיבור ל־Google Sheets
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
+creds = ServiceAccountCredentials.from_json_keyfile_name(CREDENTIALS_PATH, scope)
 client = gspread.authorize(creds)
 
-# --- פרטי הגיליון ---
+# מזהה הגיליון
 sheet_id = "14P_Qe5E_DZmuqYSns6_Z2y4aSZ9-kH2r67FzYLAbXGw"
 transactions_ws = client.open_by_key(sheet_id).worksheet("transactions")
 
-# --- טעינת נתונים ---
+# טעינת נתונים
 def load_data(ws, columns):
     data = ws.get_all_records()
     df = pd.DataFrame(data)
@@ -27,16 +37,16 @@ def load_data(ws, columns):
 transactions_cols = ['תאריך', 'סוג', 'סכום', 'מטבע', 'מקור', 'קטגוריה', 'תיאור']
 transactions = load_data(transactions_ws, transactions_cols)
 
-# --- שמירת נתונים ---
+# שמירת נתונים
 def save_data(ws, df):
     ws.clear()
     ws.update([df.columns.values.tolist()] + df.values.tolist())
 
-# --- תפריט צד ---
+# תפריט ניווט
 st.sidebar.title("תפריט")
 page = st.sidebar.radio("עבור אל:", ["חזית", "הוספה", "רשומות"])
 
-# --- עיצוב סכום ---
+# פונקציית עיצוב סכום
 def format_money(val, currency):
     try:
         val = float(val)
@@ -44,9 +54,9 @@ def format_money(val, currency):
     except:
         return f"{val} {currency}"
 
-# ================================
-# === עמוד חזית (סיכום כללי) ===
-# ================================
+# ==========================================
+# עמוד חזית
+# ==========================================
 if page == "חזית":
     st.title("🎯 ניהול תזרים")
 
@@ -63,12 +73,12 @@ if page == "חזית":
         b_out = df[(df['מקור'] == 'ישראלי') & (df['סוג'] == 'הוצאה')]['סכום'].sum()
         st.metric("ישראלי", format_money(b_in - b_out, '₪'))
     with col3:
-        total = (p_in - p_out) * 3.8 + (b_in - b_out)
+        total = (p_in - p_out)*3.8 + (b_in - b_out)
         st.metric("מאזן כולל (₪)", format_money(total, '₪'))
 
-# ================================
-# === עמוד הוספה (טופס חדש) ===
-# ================================
+# ==========================================
+# עמוד הוספה
+# ==========================================
 elif page == "הוספה":
     st.title("📥 הוספת הכנסה / הוצאה")
 
@@ -101,12 +111,11 @@ elif page == "הוספה":
             save_data(transactions_ws, transactions)
             st.success("✅ נשמר בהצלחה ל־Google Sheets!")
 
-# ================================
-# === עמוד רשומות (טבלה מלאה) ===
-# ================================
+# ==========================================
+# עמוד רשומות
+# ==========================================
 elif page == "רשומות":
     st.title("📋 כל הרשומות")
     df = transactions.copy()
     df['תאריך'] = pd.to_datetime(df['תאריך'], errors='coerce')
-    df = df.sort_values(by='תאריך', ascending=False)
-    st.dataframe(df, use_container_width=True)
+    st.dataframe(df.sort_values(by='תאריך', ascending=False), use_container_width=True)
