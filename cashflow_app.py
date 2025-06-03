@@ -39,7 +39,6 @@ def load_data(ws, columns):
 
 transactions_cols = ['תאריך', 'סוג', 'סכום', 'מטבע', 'מקור', 'קטגוריה', 'תיאור']
 transactions = load_data(transactions_ws, transactions_cols)
-@@ -40,62 +43,65 @@ transactions = load_data(transactions_ws, transactions_cols)
 # שמירת נתונים
 def save_data(ws, df):
     ws.clear()
