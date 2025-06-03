@@ -3,25 +3,27 @@ import pandas as pd
 import datetime
 import gspread
 import os
+import json
 from oauth2client.service_account import ServiceAccountCredentials
 
 # הגדרות עמוד
 st.set_page_config(page_title="ניהול תזרים", layout="wide")
 
-# קובץ ההרשאות
-CREDENTIALS_PATH = "credentials.json"
+# הגדרת הרשאות - תומך גם בהרצה מקומית וגם בענן
+scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 
-# בדיקה אם הקובץ קיים
-if not os.path.exists(CREDENTIALS_PATH):
-    st.error("⚠️ הקובץ credentials.json לא נמצא בתיקיית הפרויקט. העלה אותו ונסה שוב.")
-    st.stop()
+if "GOOGLE_CREDENTIALS" in st.secrets:
+    creds_dict = json.loads(st.secrets["GOOGLE_CREDENTIALS"])
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+else:
+    CREDENTIALS_PATH = "credentials.json"
+    if not os.path.exists(CREDENTIALS_PATH):
+        st.error("⚠️ הקובץ credentials.json לא נמצא בתיקייה. העלה אותו או הגדר Secret.")
+        st.stop()
+    creds = ServiceAccountCredentials.from_json_keyfile_name(CREDENTIALS_PATH, scope)
 
 # חיבור ל־Google Sheets
-scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-creds = ServiceAccountCredentials.from_json_keyfile_name(CREDENTIALS_PATH, scope)
 client = gspread.authorize(creds)
-
-# מזהה הגיליון שלך
 sheet_id = "14P_Qe5E_DZmuqYSns6_Z2y4aSZ9-kH2r67FzYLAbXGw"
 transactions_ws = client.open_by_key(sheet_id).worksheet("transactions")
 
@@ -73,7 +75,7 @@ if page == "חזית":
         b_out = df[(df['מקור'] == 'ישראלי') & (df['סוג'] == 'הוצאה')]['סכום'].sum()
         st.metric("ישראלי", format_money(b_in - b_out, '₪'))
     with col3:
-        total = (p_in - p_out)*3.8 + (b_in - b_out)
+        total = (p_in - p_out) * 3.8 + (b_in - b_out)
         st.metric("מאזן כולל (₪)", format_money(total, '₪'))
 
 # ==========================================
