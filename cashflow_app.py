@@ -4,6 +4,7 @@ import datetime
 import gspread
 import os
 import json
+import plotly.express as px
 from oauth2client.service_account import ServiceAccountCredentials
 
 # הגדרות עמוד
@@ -60,10 +61,12 @@ def format_money(val, currency):
 # עמוד חזית
 # ==========================================
 if page == "חזית":
-    st.title("🎯 ניהול תזרים")
+    st.title("🌟 ניהול תזרים")
 
     df = transactions.copy()
     df['סכום'] = pd.to_numeric(df['סכום'], errors='coerce').fillna(0)
+    df['תאריך'] = pd.to_datetime(df['תאריך'], errors='coerce')
+    df['חודש'] = df['תאריך'].dt.to_period('M').astype(str)
 
     col1, col2, col3 = st.columns(3)
     with col1:
@@ -78,11 +81,16 @@ if page == "חזית":
         total = (p_in - p_out) * 3.8 + (b_in - b_out)
         st.metric("מאזן כולל (₪)", format_money(total, '₪'))
 
+    st.subheader("גרף חודשי - הכנסות/הוצאות")
+    chart_data = df.groupby(['חודש', 'סוג'])['סכום'].sum().reset_index()
+    fig = px.bar(chart_data, x='חודש', y='סכום', color='סוג', barmode='group', title="תזרים לפי חודשים")
+    st.plotly_chart(fig, use_container_width=True)
+
 # ==========================================
 # עמוד הוספה
 # ==========================================
 elif page == "הוספה":
-    st.title("📅 הוספת הכנסה / הוצאה")
+    st.title("🗓 הוספת הכנסה / הוצאה")
 
     with st.form("form_transaction"):
         col1, col2, col3 = st.columns(3)
@@ -111,7 +119,7 @@ elif page == "הוספה":
             }])
             transactions = pd.concat([transactions, new_row], ignore_index=True)
             save_data(transactions_ws, transactions)
-            st.success("✅ נשמר בהצלחה ל־Google Sheets!")
+            st.success("✅ נשמר בהצלחה לְ‏Google Sheets!")
 
 # ==========================================
 # עמוד רשומות
