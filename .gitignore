@@ -1,0 +1,29 @@
+# Ignore sensitive files
+credentials.json
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.env/
+.venv/
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# VS Code settings
+.vscode/
