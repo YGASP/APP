@@ -1,3 +1,4 @@
+ (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/cashflow_app.py b/cashflow_app.py
 index e074eba7f23d2a195c85a0d48f060f8367dff23d..e5de711a1f0c483b20343f989d3254f7b66ccecb 100644
 --- a/cashflow_app.py
@@ -71,3 +72,6 @@ index e074eba7f23d2a195c85a0d48f060f8367dff23d..e5de711a1f0c483b20343f989d3254f7
  
      df = transactions.copy()
      df['סכום'] = pd.to_numeric(df['סכום'], errors='coerce').fillna(0)
+ 
+EOF
+)
