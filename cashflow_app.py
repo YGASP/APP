@@ -37,7 +37,7 @@ def load_data(ws, columns):
             df[col] = None
     return df[columns]
 
-transactions_cols = ['תאריך', 'סוג', 'סכום', 'מטבע', 'מקור', 'קטגוריה', 'תיאור']
+transactions_cols = ['תאריך', 'סוג', 'סכום', 'מטבע', 'מקור', 'קטגוריה', 'תיאור', 'סטטוס']
 transactions = load_data(transactions_ws, transactions_cols)
 
 # שמירת נתונים
@@ -47,11 +47,7 @@ def save_data(ws, df):
 
 # תפריט ניווט
 st.sidebar.title("תפריט")
-page = st.sidebar.radio("עבור אל:", ["חזית", "הוספה", "רשומות"])
-if st.sidebar.button("➕ הוספה מהירה"):
-    page = "הוספה"
-st.sidebar.markdown("---")
-st.sidebar.markdown("📄 [קובץ עזרה](https://example.com/help)")
+page = st.sidebar.radio("עבור אל:", ["חזית", "הוספה", "רשומות", "תחזיות"])
 
 # עיצוב כספים
 def format_money(val, currency):
@@ -67,7 +63,7 @@ def format_money(val, currency):
 if page == "חזית":
     st.title("🌟 ניהול תזרים")
 
-    df = transactions.copy()
+    df = transactions[transactions['סטטוס'] == 'מאומת'].copy()
     df['סכום'] = pd.to_numeric(df['סכום'], errors='coerce').fillna(0)
     df['תאריך'] = pd.to_datetime(df['תאריך'], errors='coerce')
     df['חודש'] = df['תאריך'].dt.to_period('M').astype(str)
@@ -90,26 +86,10 @@ if page == "חזית":
     fig = px.bar(chart_data, x='חודש', y='סכום', color='סוג', barmode='group', title="תזרים לפי חודשים")
     st.plotly_chart(fig, use_container_width=True)
 
-    st.subheader("🧁 פיזור לפי קטגוריה")
-    pie_data = df.groupby(['קטגוריה'])['סכום'].sum().reset_index()
-    pie_data = pie_data[pie_data['סכום'] > 0]
-    if not pie_data.empty:
-        fig2 = px.pie(pie_data, names='קטגוריה', values='סכום', title="פיזור לפי קטגוריה")
-        st.plotly_chart(fig2, use_container_width=True)
-
-    st.subheader("📈 השוואה חודשית - הכנסה מול הוצאה")
-    month_compare_raw = df.groupby(['חודש', 'סוג'])['סכום'].sum().reset_index()
-    month_compare = month_compare_raw.pivot(index='חודש', columns='סוג', values='סכום').fillna(0).reset_index()
-    if 'הכנסה' not in month_compare.columns:
-        month_compare['הכנסה'] = 0
-    if 'הוצאה' not in month_compare.columns:
-        month_compare['הוצאה'] = 0
-    fig3 = px.line(month_compare, x='חודש', y=['הכנסה', 'הוצאה'], markers=True, title="השוואה חודשית")
-    st.plotly_chart(fig3, use_container_width=True)
-
-    st.subheader("🔥 Top 5 קטגוריות הוצאה")
-    top_expense = df[df['סוג'] == 'הוצאה'].groupby('קטגוריה')['סכום'].sum().nlargest(5).reset_index()
-    st.dataframe(top_expense, use_container_width=True)
+    st.subheader("📌 קטגוריות מובילות")
+    top_categories = df[df['סוג'] == 'הוצאה'].groupby('קטגוריה')['סכום'].sum().nlargest(5).reset_index()
+    fig2 = px.pie(top_categories, names='קטגוריה', values='סכום', title='Top 5 הוצאות לפי קטגוריה')
+    st.plotly_chart(fig2, use_container_width=True)
 
 # ==========================================
 # עמוד הוספה
@@ -129,6 +109,7 @@ elif page == "הוספה":
             category = st.text_input("קטגוריה")
         with col3:
             description = st.text_input("תיאור נוסף")
+            status = st.selectbox("סטטוס", ['מאומת', 'מתוכנן'])
 
         submitted = st.form_submit_button("הוספה")
 
@@ -140,7 +121,8 @@ elif page == "הוספה":
                 'מטבע': currency,
                 'מקור': source,
                 'קטגוריה': category,
-                'תיאור': description
+                'תיאור': description,
+                'סטטוס': status
             }])
             transactions = pd.concat([transactions, new_row], ignore_index=True)
             save_data(transactions_ws, transactions)
@@ -153,22 +135,24 @@ elif page == "רשומות":
     st.title("📋 כל הרשומות")
     df = transactions.copy()
     df['תאריך'] = pd.to_datetime(df['תאריך'], errors='coerce')
-
-    with st.expander("🔍 סינון מתקדם"):
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            date_range = st.date_input("טווח תאריכים", [])
-        with col2:
-            source_filter = st.multiselect("מקור", options=df['מקור'].unique())
-        with col3:
-            category_filter = st.multiselect("קטגוריה", options=df['קטגוריה'].unique())
-
-    if date_range:
-        if len(date_range) == 2:
-            df = df[(df['תאריך'] >= pd.to_datetime(date_range[0])) & (df['תאריך'] <= pd.to_datetime(date_range[1]))]
-    if source_filter:
-        df = df[df['מקור'].isin(source_filter)]
-    if category_filter:
-        df = df[df['קטגוריה'].isin(category_filter)]
-
+    status_filter = st.selectbox("סינון לפי סטטוס", ['הכל', 'מאומת', 'מתוכנן'])
+    if status_filter != 'הכל':
+        df = df[df['סטטוס'] == status_filter]
     st.dataframe(df.sort_values(by='תאריך', ascending=False), use_container_width=True)
+
+# ==========================================
+# עמוד תחזיות
+# ==========================================
+elif page == "תחזיות":
+    st.title("🔮 תחזיות")
+    df = transactions[transactions['סטטוס'] == 'מתוכנן'].copy()
+    df['תאריך'] = pd.to_datetime(df['תאריך'], errors='coerce')
+    df = df.sort_values(by='תאריך')
+
+    for idx, row in df.iterrows():
+        st.markdown(f"**{row['תאריך'].date()}** | {row['סוג']} | {row['סכום']} {row['מטבע']} | {row['קטגוריה']} | {row['תיאור']}")
+        if st.button(f"✅ אשר שורה {idx}"):
+            transactions.at[idx, 'סטטוס'] = 'מאומת'
+            save_data(transactions_ws, transactions)
+            st.success(f"הרשומה אושרה!")
+            st.experimental_rerun()
