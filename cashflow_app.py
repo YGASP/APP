@@ -1,9 +1,4 @@
-from ace_tools import create_textdoc
-
-create_textdoc(
-    name="cashflow_app_final.py",
-    type="code/python",
-    content="""import streamlit as st
+import streamlit as st
 import pandas as pd
 import datetime
 import gspread
@@ -176,12 +171,43 @@ elif page == "תחזיות":
     df = transactions.copy()
     df['תאריך'] = pd.to_datetime(df['תאריך'], errors='coerce')
     forecasts = df[df['סטטוס'] == 'תחזית'].copy()
-    st.dataframe(forecasts.sort_values(by='תאריך'), use_container_width=True)
 
-    rows_to_update = st.multiselect("בחר תחזיות שאושרו", forecasts.index.tolist())
+    st.subheader("📆 סינון לפי טווח תאריכים עתידיים")
+    today = datetime.date.today()
+    from_date = st.date_input("מתאריך", today)
+    to_date = st.date_input("עד תאריך", today + datetime.timedelta(days=30))
+
+    mask = (forecasts['תאריך'].dt.date >= from_date) & (forecasts['תאריך'].dt.date <= to_date)
+    filtered_forecasts = forecasts[mask]
+    st.dataframe(filtered_forecasts.sort_values(by='תאריך'), use_container_width=True)
+
+    st.subheader("📈 גרף תחזיות")
+    forecast_summary = filtered_forecasts.groupby(['תאריך', 'סוג'])['סכום'].sum().reset_index()
+    if not forecast_summary.empty:
+        fig = px.line(forecast_summary, x='תאריך', y='סכום', color='סוג', markers=True, title="תחזיות עתידיות")
+        st.plotly_chart(fig, use_container_width=True)
+
+    st.subheader("✅ אישור תחזיות")
+    rows_to_update = st.multiselect("בחר תחזיות לאישור", filtered_forecasts.index.tolist())
     if st.button("אשר תחזיות שנבחרו"):
         transactions.loc[rows_to_update, 'סטטוס'] = 'אושר'
         save_data(transactions_ws, transactions)
         st.success("✨ התחזיות עודכנו כאושרו בהצלחה!")
-"""
-)
+
+    st.subheader("✏️ עריכת תחזית")
+    row_to_edit = st.selectbox("בחר שורה לעריכה", options=filtered_forecasts.index.tolist())
+    if row_to_edit is not None:
+        row = filtered_forecasts.loc[row_to_edit]
+        with st.form("edit_form"):
+            new_date = st.date_input("תאריך", row['תאריך'].date())
+            new_kind = st.selectbox("סוג", ['הכנסה', 'הוצאה'], index=['הכנסה', 'הוצאה'].index(row['סוג']))
+            new_amount = st.number_input("סכום", value=float(row['סכום']), format="%.2f")
+            new_currency = st.selectbox("מטבע", ['₪', '$'], index=['₪', '$'].index(row['מטבע']))
+            new_source = st.selectbox("מקור", ['פיוניר', 'ישראלי'], index=['פיוניר', 'ישראלי'].index(row['מקור']))
+            new_category = st.text_input("קטגוריה", row['קטגוריה'])
+            new_description = st.text_input("תיאור נוסף", row['תיאור'])
+            submitted = st.form_submit_button("שמור שינויים")
+            if submitted:
+                transactions.loc[row_to_edit] = [new_date, new_kind, new_amount, new_currency, new_source, new_category, new_description, 'תחזית']
+                save_data(transactions_ws, transactions)
+                st.success("✅ התחזית עודכנה בהצלחה!")
