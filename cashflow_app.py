@@ -45,6 +45,14 @@ def save_data(ws, df):
     ws.clear()
     ws.update([df.columns.values.tolist()] + df.values.tolist())
 
+# תפריט ניווט
+st.sidebar.title("תפריט")
+page = st.sidebar.radio("עבור אל:", ["חזית", "הוספה", "רשומות"])
+if st.sidebar.button("➕ הוספה מהירה"):
+    page = "הוספה"
+st.sidebar.markdown("---")
+st.sidebar.markdown("📄 [קובץ עזרה](https://example.com/help)")
+
 # עיצוב כספים
 def format_money(val, currency):
     try:
@@ -52,23 +60,6 @@ def format_money(val, currency):
         return "{:,.2f} {}".format(val, currency)
     except:
         return f"{val} {currency}"
-
-# Sidebar – ניווט + פעולות מהירות
-st.sidebar.title("תפריט")
-page = st.sidebar.radio("עבור אל:", ["חזית", "הוספה", "רשומות"])
-
-# כפתור הוספה מהירה
-if st.sidebar.button("➕ הוספה מהירה"):
-    st.session_state.page = "הוספה"
-
-# קובץ עזרה
-with st.sidebar.expander("📘 עזרה והנחיות"):
-    st.markdown("""
-    - הזן הכנסה או הוצאה לפי תאריך, מקור וקטגוריה.
-    - תוכל לראות את כל הנתונים ב'רשומות'.
-    - גרפים נמצאים ב'חזית'.
-    - כל שינוי נשמר אוטומטית לגיליון Google Sheets שלך.
-    """)
 
 # ==========================================
 # עמוד חזית
@@ -94,39 +85,31 @@ if page == "חזית":
         total = (p_in - p_out) * 3.8 + (b_in - b_out)
         st.metric("מאזן כולל (₪)", format_money(total, '₪'))
 
-    st.subheader("📊 גרף חודשי: הכנסות / הוצאות")
+    st.subheader("גרף חודשי - הכנסות/הוצאות")
     chart_data = df.groupby(['חודש', 'סוג'])['סכום'].sum().reset_index()
     fig = px.bar(chart_data, x='חודש', y='סכום', color='סוג', barmode='group', title="תזרים לפי חודשים")
     st.plotly_chart(fig, use_container_width=True)
 
-    st.subheader("🎯 התפלגות לפי קטגוריה (גרף פאי)")
-    pie_data = df.groupby(['קטגוריה', 'סוג'])['סכום'].sum().reset_index()
-    pie_tab1, pie_tab2 = st.tabs(["הוצאות", "הכנסות"])
-    with pie_tab1:
-        pie1 = pie_data[pie_data['סוג'] == 'הוצאה']
-        fig1 = px.pie(pie1, names='קטגוריה', values='סכום', title="התפלגות הוצאות")
-        st.plotly_chart(fig1, use_container_width=True)
-    with pie_tab2:
-        pie2 = pie_data[pie_data['סוג'] == 'הכנסה']
-        fig2 = px.pie(pie2, names='קטגוריה', values='סכום', title="התפלגות הכנסות")
+    st.subheader("🧁 פיזור לפי קטגוריה")
+    pie_data = df.groupby(['קטגוריה'])['סכום'].sum().reset_index()
+    pie_data = pie_data[pie_data['סכום'] > 0]
+    if not pie_data.empty:
+        fig2 = px.pie(pie_data, names='קטגוריה', values='סכום', title="פיזור לפי קטגוריה")
         st.plotly_chart(fig2, use_container_width=True)
 
-    st.subheader("📈 תזרים מצטבר לאורך זמן")
-    df_sorted = df.sort_values('תאריך')
-    df_sorted['מאזן יומי'] = df_sorted.apply(lambda row: row['סכום'] if row['סוג'] == 'הכנסה' else -row['סכום'], axis=1)
-    df_sorted['מאזן מצטבר'] = df_sorted['מאזן יומי'].cumsum()
-    fig_cum = px.line(df_sorted, x='תאריך', y='מאזן מצטבר', title="מאזן מצטבר לאורך זמן")
-    st.plotly_chart(fig_cum, use_container_width=True)
-
-    st.subheader("🔁 השוואה חודשית")
+    st.subheader("📈 השוואה חודשית - הכנסה מול הוצאה")
     month_compare_raw = df.groupby(['חודש', 'סוג'])['סכום'].sum().reset_index()
     month_compare = month_compare_raw.pivot(index='חודש', columns='סוג', values='סכום').fillna(0).reset_index()
+    if 'הכנסה' not in month_compare.columns:
+        month_compare['הכנסה'] = 0
+    if 'הוצאה' not in month_compare.columns:
+        month_compare['הוצאה'] = 0
     fig3 = px.line(month_compare, x='חודש', y=['הכנסה', 'הוצאה'], markers=True, title="השוואה חודשית")
     st.plotly_chart(fig3, use_container_width=True)
 
-    st.subheader("💸 Top 5 קטגוריות הוצאה")
-    top5 = pie1.sort_values('סכום', ascending=False).head(5)
-    st.dataframe(top5[['קטגוריה', 'סכום']], use_container_width=True)
+    st.subheader("🔥 Top 5 קטגוריות הוצאה")
+    top_expense = df[df['סוג'] == 'הוצאה'].groupby('קטגוריה')['סכום'].sum().nlargest(5).reset_index()
+    st.dataframe(top_expense, use_container_width=True)
 
 # ==========================================
 # עמוד הוספה
@@ -171,21 +154,21 @@ elif page == "רשומות":
     df = transactions.copy()
     df['תאריך'] = pd.to_datetime(df['תאריך'], errors='coerce')
 
-    st.subheader("🔎 סינון")
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        date_range = st.date_input("טווח תאריכים", [])
-    with col2:
-        source_filter = st.selectbox("מקור", ['הכל'] + df['מקור'].unique().tolist())
-    with col3:
-        category_filter = st.text_input("חיפוש לפי קטגוריה")
+    with st.expander("🔍 סינון מתקדם"):
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            date_range = st.date_input("טווח תאריכים", [])
+        with col2:
+            source_filter = st.multiselect("מקור", options=df['מקור'].unique())
+        with col3:
+            category_filter = st.multiselect("קטגוריה", options=df['קטגוריה'].unique())
 
-    filtered = df
-    if len(date_range) == 2:
-        filtered = filtered[(filtered['תאריך'] >= pd.to_datetime(date_range[0])) & (filtered['תאריך'] <= pd.to_datetime(date_range[1]))]
-    if source_filter != 'הכל':
-        filtered = filtered[filtered['מקור'] == source_filter]
+    if date_range:
+        if len(date_range) == 2:
+            df = df[(df['תאריך'] >= pd.to_datetime(date_range[0])) & (df['תאריך'] <= pd.to_datetime(date_range[1]))]
+    if source_filter:
+        df = df[df['מקור'].isin(source_filter)]
     if category_filter:
-        filtered = filtered[filtered['קטגוריה'].str.contains(category_filter, case=False, na=False)]
+        df = df[df['קטגוריה'].isin(category_filter)]
 
-    st.dataframe(filtered.sort_values(by='תאריך', ascending=False), use_container_width=True)
+    st.dataframe(df.sort_values(by='תאריך', ascending=False), use_container_width=True)
