@@ -1,4 +1,9 @@
-import streamlit as st
+from ace_tools import create_textdoc
+
+create_textdoc(
+    name="cashflow_app_final.py",
+    type="code/python",
+    content="""import streamlit as st
 import pandas as pd
 import datetime
 import gspread
@@ -48,6 +53,11 @@ def save_data(ws, df):
 # תפריט ניווט
 st.sidebar.title("תפריט")
 page = st.sidebar.radio("עבור אל:", ["חזית", "הוספה", "רשומות", "תחזיות"])
+st.sidebar.markdown("---")
+if st.sidebar.button("📤 הוספה מהירה"):
+    st.switch_page("הוספה")
+if st.sidebar.button("ℹ️ קובץ עזרה"):
+    st.info("👋 הכנס את ההכנסות וההוצאות שלך, נתח תחזיות, והישאר בשליטה על התזרים.")
 
 # עיצוב כספים
 def format_money(val, currency):
@@ -62,34 +72,44 @@ def format_money(val, currency):
 # ==========================================
 if page == "חזית":
     st.title("🌟 ניהול תזרים")
-
-    df = transactions[transactions['סטטוס'] == 'מאומת'].copy()
+    df = transactions.copy()
     df['סכום'] = pd.to_numeric(df['סכום'], errors='coerce').fillna(0)
     df['תאריך'] = pd.to_datetime(df['תאריך'], errors='coerce')
     df['חודש'] = df['תאריך'].dt.to_period('M').astype(str)
+    df_confirmed = df[df['סטטוס'] != 'תחזית']
 
     col1, col2, col3 = st.columns(3)
     with col1:
-        p_in = df[(df['מקור'] == 'פיוניר') & (df['סוג'] == 'הכנסה')]['סכום'].sum()
-        p_out = df[(df['מקור'] == 'פיוניר') & (df['סוג'] == 'הוצאה')]['סכום'].sum()
+        p_in = df_confirmed[(df_confirmed['מקור'] == 'פיוניר') & (df_confirmed['סוג'] == 'הכנסה')]['סכום'].sum()
+        p_out = df_confirmed[(df_confirmed['מקור'] == 'פיוניר') & (df_confirmed['סוג'] == 'הוצאה')]['סכום'].sum()
         st.metric("פיוניר", format_money(p_in - p_out, '$'))
     with col2:
-        b_in = df[(df['מקור'] == 'ישראלי') & (df['סוג'] == 'הכנסה')]['סכום'].sum()
-        b_out = df[(df['מקור'] == 'ישראלי') & (df['סוג'] == 'הוצאה')]['סכום'].sum()
+        b_in = df_confirmed[(df_confirmed['מקור'] == 'ישראלי') & (df_confirmed['סוג'] == 'הכנסה')]['סכום'].sum()
+        b_out = df_confirmed[(df_confirmed['מקור'] == 'ישראלי') & (df_confirmed['סוג'] == 'הוצאה')]['סכום'].sum()
         st.metric("ישראלי", format_money(b_in - b_out, '₪'))
     with col3:
         total = (p_in - p_out) * 3.8 + (b_in - b_out)
         st.metric("מאזן כולל (₪)", format_money(total, '₪'))
 
-    st.subheader("גרף חודשי - הכנסות/הוצאות")
-    chart_data = df.groupby(['חודש', 'סוג'])['סכום'].sum().reset_index()
-    fig = px.bar(chart_data, x='חודש', y='סכום', color='סוג', barmode='group', title="תזרים לפי חודשים")
+    st.subheader("📊 גרף חודשי - הכנסות/הוצאות")
+    chart_data = df_confirmed.groupby(['חודש', 'סוג'])['סכום'].sum().reset_index()
+    fig = px.bar(chart_data, x='חודש', y='סכום', color='סוג', barmode='group')
     st.plotly_chart(fig, use_container_width=True)
 
-    st.subheader("📌 קטגוריות מובילות")
-    top_categories = df[df['סוג'] == 'הוצאה'].groupby('קטגוריה')['סכום'].sum().nlargest(5).reset_index()
-    fig2 = px.pie(top_categories, names='קטגוריה', values='סכום', title='Top 5 הוצאות לפי קטגוריה')
+    st.subheader("🥧 פיזור לפי קטגוריה")
+    pie_df = df_confirmed[df_confirmed['סוג'] == 'הוצאה'].groupby('קטגוריה')['סכום'].sum().reset_index()
+    fig2 = px.pie(pie_df, names='קטגוריה', values='סכום', title='פיזור הוצאות')
     st.plotly_chart(fig2, use_container_width=True)
+
+    st.subheader("📈 השוואת חודשים (MoM)")
+    pivot = df_confirmed.pivot_table(index='חודש', columns='סוג', values='סכום', aggfunc='sum').fillna(0).reset_index()
+    if 'חודש' in pivot.columns:
+        fig3 = px.line(pivot, x='חודש', y=['הכנסה', 'הוצאה'], markers=True)
+        st.plotly_chart(fig3, use_container_width=True)
+
+    st.subheader("🏆 Top 5 קטגוריות הוצאה")
+    top5 = df_confirmed[df_confirmed['סוג'] == 'הוצאה'].groupby('קטגוריה')['סכום'].sum().nlargest(5).reset_index()
+    st.dataframe(top5)
 
 # ==========================================
 # עמוד הוספה
@@ -109,10 +129,9 @@ elif page == "הוספה":
             category = st.text_input("קטגוריה")
         with col3:
             description = st.text_input("תיאור נוסף")
-            status = st.selectbox("סטטוס", ['מאומת', 'מתוכנן'])
+            status = st.selectbox("סטטוס", ['אושר', 'תחזית'])
 
         submitted = st.form_submit_button("הוספה")
-
         if submitted:
             new_row = pd.DataFrame.from_records([{
                 'תאריך': date.strftime('%Y-%m-%d'),
@@ -135,24 +154,34 @@ elif page == "רשומות":
     st.title("📋 כל הרשומות")
     df = transactions.copy()
     df['תאריך'] = pd.to_datetime(df['תאריך'], errors='coerce')
-    status_filter = st.selectbox("סינון לפי סטטוס", ['הכל', 'מאומת', 'מתוכנן'])
-    if status_filter != 'הכל':
-        df = df[df['סטטוס'] == status_filter]
-    st.dataframe(df.sort_values(by='תאריך', ascending=False), use_container_width=True)
+
+    with st.expander("🔍 סינון"):
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            start_date = st.date_input("מתאריך", value=df['תאריך'].min())
+            end_date = st.date_input("עד תאריך", value=df['תאריך'].max())
+        with col2:
+            source_filter = st.multiselect("מקור", options=df['מקור'].unique(), default=df['מקור'].unique())
+        with col3:
+            category_filter = st.multiselect("קטגוריה", options=df['קטגוריה'].unique(), default=df['קטגוריה'].unique())
+
+    mask = (df['תאריך'] >= pd.to_datetime(start_date)) & (df['תאריך'] <= pd.to_datetime(end_date)) & (df['מקור'].isin(source_filter)) & (df['קטגוריה'].isin(category_filter))
+    st.dataframe(df[mask].sort_values(by='תאריך', ascending=False), use_container_width=True)
 
 # ==========================================
 # עמוד תחזיות
 # ==========================================
 elif page == "תחזיות":
-    st.title("🔮 תחזיות")
-    df = transactions[transactions['סטטוס'] == 'מתוכנן'].copy()
+    st.title("🔮 תחזיות עתידיות")
+    df = transactions.copy()
     df['תאריך'] = pd.to_datetime(df['תאריך'], errors='coerce')
-    df = df.sort_values(by='תאריך')
+    forecasts = df[df['סטטוס'] == 'תחזית'].copy()
+    st.dataframe(forecasts.sort_values(by='תאריך'), use_container_width=True)
 
-    for idx, row in df.iterrows():
-        st.markdown(f"**{row['תאריך'].date()}** | {row['סוג']} | {row['סכום']} {row['מטבע']} | {row['קטגוריה']} | {row['תיאור']}")
-        if st.button(f"✅ אשר שורה {idx}"):
-            transactions.at[idx, 'סטטוס'] = 'מאומת'
-            save_data(transactions_ws, transactions)
-            st.success(f"הרשומה אושרה!")
-            st.experimental_rerun()
+    rows_to_update = st.multiselect("בחר תחזיות שאושרו", forecasts.index.tolist())
+    if st.button("אשר תחזיות שנבחרו"):
+        transactions.loc[rows_to_update, 'סטטוס'] = 'אושר'
+        save_data(transactions_ws, transactions)
+        st.success("✨ התחזיות עודכנו כאושרו בהצלחה!")
+"""
+)
