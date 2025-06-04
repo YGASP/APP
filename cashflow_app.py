@@ -50,7 +50,8 @@ st.sidebar.title("תפריט")
 page = st.sidebar.radio("עבור אל:", ["חזית", "הוספה", "רשומות", "תחזיות"])
 st.sidebar.markdown("---")
 if st.sidebar.button("📤 הוספה מהירה"):
-    st.switch_page("הוספה")
+    st.session_state["quick_add"] = True
+    page = "הוספה"
 if st.sidebar.button("ℹ️ קובץ עזרה"):
     st.info("👋 הכנס את ההכנסות וההוצאות שלך, נתח תחזיות, והישאר בשליטה על התזרים.")
 
@@ -112,6 +113,8 @@ if page == "חזית":
 elif page == "הוספה":
     st.title("🗓 הוספת הכנסה / הוצאה")
 
+    default_status = 'תחזית' if st.session_state.get("quick_add") else 'אושר'
+
     with st.form("form_transaction"):
         col1, col2, col3 = st.columns(3)
         with col1:
@@ -124,7 +127,7 @@ elif page == "הוספה":
             category = st.text_input("קטגוריה")
         with col3:
             description = st.text_input("תיאור נוסף")
-            status = st.selectbox("סטטוס", ['אושר', 'תחזית'])
+            status = st.selectbox("סטטוס", ['אושר', 'תחזית'], index=['אושר', 'תחזית'].index(default_status))
 
         submitted = st.form_submit_button("הוספה")
         if submitted:
@@ -141,6 +144,7 @@ elif page == "הוספה":
             transactions = pd.concat([transactions, new_row], ignore_index=True)
             save_data(transactions_ws, transactions)
             st.success("✅ נשמר בהצלחה ל־Google Sheets!")
+            st.session_state["quick_add"] = False
 
 # ==========================================
 # עמוד רשומות
@@ -160,7 +164,12 @@ elif page == "רשומות":
         with col3:
             category_filter = st.multiselect("קטגוריה", options=df['קטגוריה'].unique(), default=df['קטגוריה'].unique())
 
-    mask = (df['תאריך'] >= pd.to_datetime(start_date)) & (df['תאריך'] <= pd.to_datetime(end_date)) & (df['מקור'].isin(source_filter)) & (df['קטגוריה'].isin(category_filter))
+    mask = (
+        (df['תאריך'] >= pd.to_datetime(start_date)) &
+        (df['תאריך'] <= pd.to_datetime(end_date)) &
+        (df['מקור'].isin(source_filter)) &
+        (df['קטגוריה'].isin(category_filter))
+    )
     st.dataframe(df[mask].sort_values(by='תאריך', ascending=False), use_container_width=True)
 
 # ==========================================
@@ -195,8 +204,8 @@ elif page == "תחזיות":
         st.success("✨ התחזיות עודכנו כאושרו בהצלחה!")
 
     st.subheader("✏️ עריכת תחזית")
-    row_to_edit = st.selectbox("בחר שורה לעריכה", options=filtered_forecasts.index.tolist())
-    if row_to_edit is not None:
+    if not filtered_forecasts.empty:
+        row_to_edit = st.selectbox("בחר שורה לעריכה", options=filtered_forecasts.index.tolist())
         row = filtered_forecasts.loc[row_to_edit]
         with st.form("edit_form"):
             new_date = st.date_input("תאריך", row['תאריך'].date())
