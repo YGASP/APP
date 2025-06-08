@@ -287,7 +287,6 @@ elif page == "תחזיות":
 
     mask = (df['תאריך'].dt.date >= from_date) & (df['תאריך'].dt.date <= to_date)
    forecasted = df[mask & (df['סטטוס'].isin(['תחזית', 'אושר']))].copy()
-
 if not forecasted.empty:
     forecasted['label'] = forecasted['סטטוס'] + ' - ' + forecasted['קטגוריה']
     forecasted_summary = forecasted.groupby(['תאריך', 'label'])['סכום'].sum().reset_index()
