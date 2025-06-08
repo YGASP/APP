@@ -29,6 +29,7 @@ sheet_id = "14P_Qe5E_DZmuqYSns6_Z2y4aSZ9-kH2r67FzYLAbXGw"
 transactions_ws = client.open_by_key(sheet_id).worksheet("transactions")
 
 # טעינת נתונים
+
 def load_data(ws, columns):
     data = ws.get_all_records()
     df = pd.DataFrame(data)
@@ -41,11 +42,30 @@ transactions_cols = ['תאריך', 'סוג', 'סכום', 'מטבע', 'מקור',
 transactions = load_data(transactions_ws, transactions_cols)
 
 # שמירת נתונים
+
 def save_data(ws, df):
     ws.clear()
     ws.update([df.columns.values.tolist()] + df.values.tolist())
 
-# תפריט תחזית לפי מכירות ורווח ליחידה
+# 🧠 היסטוריית התממשות
+@st.cache_data(show_spinner=False)
+def get_realization_rate(df):
+    df = df.copy()
+    df['תאריך'] = pd.to_datetime(df['תאריך'], errors='coerce')
+    df['SKU'] = df['קטגוריה'].str.extract(r"מכירות (.+)")
+    forecast_df = df[df['סטטוס'] == 'תחזית']
+    confirmed_df = df[df['סטטוס'] == 'אושר']
+
+    realization = confirmed_df.groupby('SKU')['סכום'].sum() / forecast_df.groupby('SKU')['סכום'].sum()
+    return realization.fillna(1.0).to_dict()
+
+realization_map = get_realization_rate(transactions)
+
+# תפריט ניווט
+st.sidebar.title("תפריט")
+page = st.sidebar.radio("עבור אל:", ["חזית", "הוספה", "רשומות", "תחזיות"])
+
+# 📦 תחזית מכירות
 st.sidebar.markdown("---")
 st.sidebar.subheader("📦 תחזית מכירות")
 with st.sidebar.expander("הזנת תחזית לפי כמות ורווח ליחידה", expanded=False):
@@ -70,7 +90,8 @@ with st.sidebar.expander("הזנת תחזית לפי כמות ורווח ליח�
 
         if forecast_submit:
             profit_per_unit = sku_profit_map.get(sku, 0)
-            total_forecast = round(units * profit_per_unit, 2)
+            realization_rate = realization_map.get(sku, 0.85)
+            total_forecast = round(units * profit_per_unit * realization_rate, 2)
 
             new_row = {
                 'תאריך': forecast_month.strftime('%Y-%m-01'),
@@ -79,221 +100,11 @@ with st.sidebar.expander("הזנת תחזית לפי כמות ורווח ליח�
                 'מטבע': '$',
                 'מקור': 'פיוניר',
                 'קטגוריה': f"מכירות {sku}",
-                'תיאור': f"צפי רווח לפי {units} יחידות",
+                'תיאור': f"{units} יחידות × ${profit_per_unit:.2f} × {realization_rate:.2f}",
                 'סטטוס': 'תחזית'
             }
 
             new_df = pd.DataFrame([new_row])
             transactions = pd.concat([transactions, new_df], ignore_index=True)
             save_data(transactions_ws, transactions)
-            st.success(f"✅ תחזית נרשמה: {units} יחידות × ${profit_per_unit:.2f} = ${total_forecast:.2f}")
-
-# תפריט ניווט
-st.sidebar.title("תפריט")
-page = st.sidebar.radio("עבור אל:", ["חזית", "הוספה", "רשומות", "תחזיות"])
-
-# תפריט הוספה מהירה - טופס צדדי
-with st.sidebar.expander("📤 הוספה מהירה", expanded=False):
-    with st.form("quick_add_form"):
-        date = st.date_input("תאריך", datetime.date.today(), key="quick_date")
-        kind = st.selectbox("סוג", ['הכנסה', 'הוצאה'], key="quick_kind")
-        amount = st.number_input("סכום", min_value=0.0, format="%.2f", key="quick_amount")
-        fee = st.number_input("עמלת העברה", min_value=0.0, format="%.2f", key="quick_fee")
-        currency = st.selectbox("מטבע", ['₪', '$'], key="quick_currency")
-        source = st.selectbox("מקור", ['פיוניר', 'ישראלי'], key="quick_source")
-        category = st.text_input("קטגוריה", key="quick_category")
-        description = st.text_input("תיאור", key="quick_description")
-        status = st.selectbox("סטטוס", ['אושר', 'תחזית'], key="quick_status")
-        quick_submitted = st.form_submit_button("הוסף תנועה")
-
-        if quick_submitted:
-            new_rows = [{
-                'תאריך': date.strftime('%Y-%m-%d'),
-                'סוג': kind,
-                'סכום': amount,
-                'מטבע': currency,
-                'מקור': source,
-                'קטגוריה': category,
-                'תיאור': description,
-                'סטטוס': status
-            }]
-            if fee > 0:
-                new_rows.append({
-                    'תאריך': date.strftime('%Y-%m-%d'),
-                    'סוג': 'הוצאה',
-                    'סכום': fee,
-                    'מטבע': currency,
-                    'מקור': source,
-                    'קטגוריה': 'עמלה',
-                    'תיאור': 'עמלת העברה',
-                    'סטטוס': status
-                })
-            new_df = pd.DataFrame(new_rows)
-            transactions = pd.concat([transactions, new_df], ignore_index=True)
-            save_data(transactions_ws, transactions)
-            st.success("✅ נוסף בהצלחה!")
-
-# עיצוב סכומים
-def format_money(val, currency):
-    try:
-        val = float(val)
-        return "{:,.2f} {}".format(val, currency)
-    except:
-        return f"{val} {currency}"
-# ============================
-# עמוד חזית
-# ============================
-if page == "חזית":
-    st.title("🌟 ניהול תזרים")
-    df = transactions.copy()
-    df['סכום'] = pd.to_numeric(df['סכום'], errors='coerce').fillna(0)
-    df['תאריך'] = pd.to_datetime(df['תאריך'], errors='coerce')
-    df['חודש'] = df['תאריך'].dt.to_period('M').astype(str)
-    df_confirmed = df[df['סטטוס'] != 'תחזית']
-
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        p_in = df_confirmed[(df_confirmed['מקור'] == 'פיוניר') & (df_confirmed['סוג'] == 'הכנסה')]['סכום'].sum()
-        p_out = df_confirmed[(df_confirmed['מקור'] == 'פיוניר') & (df_confirmed['סוג'] == 'הוצאה')]['סכום'].sum()
-        st.metric("פיוניר", format_money(p_in - p_out, '$'))
-    with col2:
-        b_in = df_confirmed[(df_confirmed['מקור'] == 'ישראלי') & (df_confirmed['סוג'] == 'הכנסה')]['סכום'].sum()
-        b_out = df_confirmed[(df_confirmed['מקור'] == 'ישראלי') & (df_confirmed['סוג'] == 'הוצאה')]['סכום'].sum()
-        st.metric("ישראלי", format_money(b_in - b_out, '₪'))
-    with col3:
-        total = (p_in - p_out) * 3.8 + (b_in - b_out)
-        st.metric("מאזן כולל (₪)", format_money(total, '₪'))
-
-    st.subheader("📊 גרף חודשי")
-    chart_data = df_confirmed.groupby(['חודש', 'סוג'])['סכום'].sum().reset_index()
-    fig = px.bar(chart_data, x='חודש', y='סכום', color='סוג', barmode='group')
-    st.plotly_chart(fig, use_container_width=True)
-
-    st.subheader("🥧 פיזור לפי קטגוריה")
-    pie_df = df_confirmed[df_confirmed['סוג'] == 'הוצאה'].groupby('קטגוריה')['סכום'].sum().reset_index()
-    fig2 = px.pie(pie_df, names='קטגוריה', values='סכום')
-    st.plotly_chart(fig2, use_container_width=True)
-
-    st.subheader("📈 השוואת חודשים")
-    pivot = df_confirmed.pivot_table(index='חודש', columns='סוג', values='סכום', aggfunc='sum').fillna(0).reset_index()
-    if 'חודש' in pivot.columns:
-        fig3 = px.line(pivot, x='חודש', y=['הכנסה', 'הוצאה'], markers=True)
-        st.plotly_chart(fig3, use_container_width=True)
-
-# ============================
-# עמוד הוספה רגילה
-# ============================
-elif page == "הוספה":
-    st.title("🗓 הוספת תנועה")
-    with st.form("form_transaction"):
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            date = st.date_input("תאריך", datetime.date.today())
-            amount = st.number_input("סכום", min_value=0.0, format="%.2f")
-            currency = st.selectbox("מטבע", ['₪', '$'])
-        with col2:
-            kind = st.selectbox("סוג", ['הכנסה', 'הוצאה'])
-            source = st.selectbox("מקור", ['פיוניר', 'ישראלי'])
-            category = st.text_input("קטגוריה")
-        with col3:
-            description = st.text_input("תיאור נוסף")
-            status = st.selectbox("סטטוס", ['אושר', 'תחזית'])
-            fee = st.number_input("עמלת העברה", min_value=0.0, format="%.2f")
-
-        submitted = st.form_submit_button("הוספה")
-        if submitted:
-            new_rows = [{
-                'תאריך': date.strftime('%Y-%m-%d'),
-                'סוג': kind,
-                'סכום': amount,
-                'מטבע': currency,
-                'מקור': source,
-                'קטגוריה': category,
-                'תיאור': description,
-                'סטטוס': status
-            }]
-            if fee > 0:
-                new_rows.append({
-                    'תאריך': date.strftime('%Y-%m-%d'),
-                    'סוג': 'הוצאה',
-                    'סכום': fee,
-                    'מטבע': currency,
-                    'מקור': source,
-                    'קטגוריה': 'עמלה',
-                    'תיאור': 'עמלת העברה',
-                    'סטטוס': status
-                })
-            new_df = pd.DataFrame(new_rows)
-            transactions = pd.concat([transactions, new_df], ignore_index=True)
-            save_data(transactions_ws, transactions)
-            st.success("✅ נשמר בהצלחה!")
-
-# ============================
-# עמוד רשומות
-# ============================
-elif page == "רשומות":
-    st.title("📋 כל הרשומות")
-    df = transactions.copy()
-    df['תאריך'] = pd.to_datetime(df['תאריך'], errors='coerce')
-
-    with st.expander("🔍 סינון"):
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            start_date = st.date_input("מתאריך", value=df['תאריך'].min())
-            end_date = st.date_input("עד תאריך", value=df['תאריך'].max())
-        with col2:
-            source_filter = st.multiselect("מקור", df['מקור'].unique(), default=df['מקור'].unique())
-        with col3:
-            category_filter = st.multiselect("קטגוריה", df['קטגוריה'].unique(), default=df['קטגוריה'].unique())
-
-    mask = (df['תאריך'] >= pd.to_datetime(start_date)) & (df['תאריך'] <= pd.to_datetime(end_date)) & (df['מקור'].isin(source_filter)) & (df['קטגוריה'].isin(category_filter))
-    st.dataframe(df[mask].sort_values(by='תאריך', ascending=False), use_container_width=True)
-
-# ============================
-# עמוד תחזיות
-# ============================
-elif page == "תחזיות":
-    st.title("🔮 תחזיות עתידיות")
-    df = transactions.copy()
-    df['תאריך'] = pd.to_datetime(df['תאריך'], errors='coerce')
-    forecasts = df[df['סטטוס'] == 'תחזית'].copy()
-
-    st.subheader("📆 טווח תאריכים")
-    today = datetime.date.today()
-    from_date = st.date_input("מתאריך", today)
-    to_date = st.date_input("עד תאריך", today + datetime.timedelta(days=30))
-
-    mask = (forecasts['תאריך'].dt.date >= from_date) & (forecasts['תאריך'].dt.date <= to_date)
-    filtered_forecasts = forecasts[mask]
-    st.dataframe(filtered_forecasts.sort_values(by='תאריך'), use_container_width=True)
-
-    st.subheader("📈 גרף תחזיות")
-    forecast_summary = filtered_forecasts.groupby(['תאריך', 'סוג'])['סכום'].sum().reset_index()
-    if not forecast_summary.empty:
-        fig = px.line(forecast_summary, x='תאריך', y='סכום', color='סוג', markers=True)
-        st.plotly_chart(fig, use_container_width=True)
-
-    st.subheader("✅ אישור תחזיות")
-    rows_to_update = st.multiselect("בחר תחזיות לאישור", filtered_forecasts.index.tolist())
-    if st.button("אשר תחזיות"):
-        transactions.loc[rows_to_update, 'סטטוס'] = 'אושר'
-        save_data(transactions_ws, transactions)
-        st.success("✨ התחזיות אושרו!")
-
-    st.subheader("✏️ עריכת תחזית")
-    row_to_edit = st.selectbox("בחר שורה לעריכה", options=filtered_forecasts.index.tolist())
-    if row_to_edit is not None:
-        row = filtered_forecasts.loc[row_to_edit]
-        with st.form("edit_form"):
-            new_date = st.date_input("תאריך", row['תאריך'].date())
-            new_kind = st.selectbox("סוג", ['הכנסה', 'הוצאה'], index=['הכנסה', 'הוצאה'].index(row['סוג']))
-            new_amount = st.number_input("סכום", value=float(row['סכום']), format="%.2f")
-            new_currency = st.selectbox("מטבע", ['₪', '$'], index=['₪', '$'].index(row['מטבע']))
-            new_source = st.selectbox("מקור", ['פיוניר', 'ישראלי'], index=['פיוניר', 'ישראלי'].index(row['מקור']))
-            new_category = st.text_input("קטגוריה", row['קטגוריה'])
-            new_description = st.text_input("תיאור נוסף", row['תיאור'])
-            submitted = st.form_submit_button("שמור שינויים")
-            if submitted:
-                transactions.loc[row_to_edit] = [new_date, new_kind, new_amount, new_currency, new_source, new_category, new_description, 'תחזית']
-                save_data(transactions_ws, transactions)
-                st.success("✅ התחזית עודכנה!")
+            st.success(f"✅ תחזית נרשמה לפי שיעור מימוש {realization_rate:.2f}: ${total_forecast:.2f}")
