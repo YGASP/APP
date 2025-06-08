@@ -291,11 +291,11 @@ elif page == "תחזיות":
     st.subheader("📈 גרף תחזית מול בפועל")
     forecasted['label'] = forecasted['סטטוס'] + ' - ' + forecasted['קטגוריה']
     forecasted_summary = forecasted.groupby(['תאריך', 'label'])['סכום'].sum().reset_index()
-if not forecasted_summary.empty:
-fig = px.bar(forecasted_summary, x='תאריך', y='סכום', color='label', barmode='group', text='סכום')
-fig.update_traces(texttemplate='%{text:.2f}', textposition='outside')
-fig.update_layout(xaxis_title='תאריך', yaxis_title='סכום', legend_title='סוג תחזית')
-st.plotly_chart(fig, use_container_width=True)
+    if not forecasted_summary.empty:
+    fig = px.bar(forecasted_summary, x='תאריך', y='סכום', color='label', barmode='group', text='סכום')
+    fig.update_traces(texttemplate='%{text:.2f}', textposition='outside')
+    fig.update_layout(xaxis_title='תאריך', yaxis_title='סכום', legend_title='סוג תחזית')
+    st.plotly_chart(fig, use_container_width=True)
 
 
     st.subheader("🧾 טבלת תחזיות")
