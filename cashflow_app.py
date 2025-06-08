@@ -286,10 +286,20 @@ elif page == "תחזיות":
     to_date = st.date_input("עד תאריך", today + datetime.timedelta(days=30))
 
     mask = (df['תאריך'].dt.date >= from_date) & (df['תאריך'].dt.date <= to_date)
-    forecasted = df[mask & (df['סטטוס'].isin(['תחזית', 'אושר']))].copy()
+   forecasted = df[mask & (df['סטטוס'].isin(['תחזית', 'אושר']))].copy()
 
+if not forecasted.empty:
+    forecasted['label'] = forecasted['סטטוס'] + ' - ' + forecasted['קטגוריה']
+    forecasted_summary = forecasted.groupby(['תאריך', 'label'])['סכום'].sum().reset_index()
+    fig = px.bar(forecasted_summary, x='תאריך', y='סכום', color='label', barmode='group', text='סכום')
+    fig.update_traces(texttemplate='%{text:.2f}', textposition='outside')
+    fig.update_layout(xaxis_title='תאריך', yaxis_title='סכום', legend_title='סוג תחזית')
     st.subheader("📈 גרף תחזית מול בפועל")
-    forecast_only = forecasted[forecasted['סטטוס'] == 'תחזית'].copy()
+    st.plotly_chart(fig, use_container_width=True)
+else:
+    st.subheader("📈 גרף תחזית מול בפועל")
+    st.info("אין נתונים לגרף")
+
 approved_only = forecasted[forecasted['סטטוס'] == 'אושר'].copy()
 
 forecast_only['label'] = 'תחזית - ' + forecast_only['קטגוריה']
