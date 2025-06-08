@@ -1,3 +1,50 @@
+import streamlit as st
+import pandas as pd
+import datetime
+import gspread
+import os
+import json
+import plotly.express as px
+from oauth2client.service_account import ServiceAccountCredentials
+
+# הגדרות עמוד
+st.set_page_config(page_title="ניהול תזרים", layout="wide")
+
+# הגדרת הרשאות - תומך גם בהרצה מקומית וגם בענן
+scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+
+if "GOOGLE_CREDENTIALS" in st.secrets:
+    creds_dict = json.loads(st.secrets["GOOGLE_CREDENTIALS"])
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+else:
+    CREDENTIALS_PATH = "credentials.json"
+    if not os.path.exists(CREDENTIALS_PATH):
+        st.error("⚠️ הקובץ credentials.json לא נמצא בתיקייה. העלה אותו או הגדר Secret.")
+        st.stop()
+    creds = ServiceAccountCredentials.from_json_keyfile_name(CREDENTIALS_PATH, scope)
+
+# חיבור ל־Google Sheets
+client = gspread.authorize(creds)
+sheet_id = "14P_Qe5E_DZmuqYSns6_Z2y4aSZ9-kH2r67FzYLAbXGw"
+transactions_ws = client.open_by_key(sheet_id).worksheet("transactions")
+
+# טעינת נתונים
+def load_data(ws, columns):
+    data = ws.get_all_records()
+    df = pd.DataFrame(data)
+    for col in columns:
+        if col not in df.columns:
+            df[col] = None
+    return df[columns]
+
+transactions_cols = ['תאריך', 'סוג', 'סכום', 'מטבע', 'מקור', 'קטגוריה', 'תיאור', 'סטטוס']
+transactions = load_data(transactions_ws, transactions_cols)
+
+# שמירת נתונים
+def save_data(ws, df):
+    ws.clear()
+    ws.update([df.columns.values.tolist()] + df.values.tolist())
+
 # תפריט תחזית לפי מכירות ורווח ליחידה
 st.sidebar.markdown("---")
 st.sidebar.subheader("📦 תחזית מכירות")
