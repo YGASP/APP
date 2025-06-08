@@ -252,6 +252,7 @@ elif page == "רשומות":
 # ============================
 # ============================
 # ============================
+# ============================
 # עמוד תחזיות
 # ============================
 elif page == "תחזיות":
@@ -292,10 +293,8 @@ elif page == "תחזיות":
     forecasted['label'] = forecasted['סטטוס'] + ' - ' + forecasted['קטגוריה']
     forecasted_summary = forecasted.groupby(['תאריך', 'label'])['סכום'].sum().reset_index()
     if not forecasted_summary.empty:
-if not forecasted_summary.empty:
-    fig = px.bar(forecasted_summary, x='תאריך', y='סכום', color='label', barmode='group', text='סכום')
-    fig.update_traces(texttemplate='%{text:.2s}', textposition='outside')
-fig.update_layout(xaxis_title='תאריך', yaxis_title='סכום', legend_title='סוג תחזית')
+        fig = px.bar(forecasted_summary, x='תאריך', y='סכום', color='label', barmode='group', text_auto='.2s')
+        fig.update_layout(xaxis_title='תאריך', yaxis_title='סכום', legend_title='סוג תחזית')
         st.plotly_chart(fig, use_container_width=True)
     else:
         st.info("אין נתונים לגרף")
