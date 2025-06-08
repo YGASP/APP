@@ -297,8 +297,8 @@ if not forecasted_summary.empty:
     fig.update_traces(texttemplate='%{text:.2f}', textposition='outside')
     fig.update_layout(xaxis_title='תאריך', yaxis_title='סכום', legend_title='סוג תחזית')
     st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.info("אין נתונים לגרף")
+else:
+    st.info("אין נתונים לגרף")
 
     st.subheader("🧾 טבלת תחזיות")
     st.dataframe(forecasted.sort_values(by='תאריך'), use_container_width=True)
