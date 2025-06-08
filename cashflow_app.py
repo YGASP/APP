@@ -303,6 +303,7 @@ forecasted_summary = combined.groupby(['תאריך', 'label'])['סכום'].sum()
   if not forecasted_summary.empty:
     fig = px.bar(forecasted_summary, x='תאריך', y='סכום', color='label', barmode='group', text='סכום')
     fig.update_traces(texttemplate='%{text:.2f}', textposition='outside')
+
     fig.update_layout(
         xaxis_title='תאריך',
         yaxis_title='סכום',
