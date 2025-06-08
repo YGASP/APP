@@ -338,4 +338,23 @@ if not editable_df.empty:
         st.success(f"התחזית עודכנה כ־{status} עם סכום בפועל: ${actual_value:.2f}")
 else:
     st.info("אין תחזיות לעדכון כרגע.")
+st.subheader("📊 עדכון סכום בפועל / דחיית תחזית")
+
+editable_df = transactions[transactions['סטטוס'] == 'תחזית'].copy()
+if not editable_df.empty:
+    selected_index = st.selectbox("בחר תחזית לעדכון:", editable_df.index, format_func=lambda i: f"{editable_df.at[i, 'תאריך']} | {editable_df.at[i, 'קטגוריה']} | ${editable_df.at[i, 'סכום']}")
+    selected_row = editable_df.loc[selected_index]
+
+    st.markdown(f"### ✏️ תחזית נבחרת: {selected_row['קטגוריה']} בתאריך {selected_row['תאריך']}")
+    actual_value = st.number_input("💰 כמה באמת התקבל?", min_value=0.0, format="%.2f", value=selected_row['סכום'])
+    status = st.selectbox("🟢 מה הסטטוס?", ["אושר", "נדחה"])
+
+    if st.button("💾 שמור עדכון"):
+        transactions.at[selected_index, 'סכום'] = actual_value
+        transactions.at[selected_index, 'סטטוס'] = status
+        transactions.at[selected_index, 'תיאור'] += f" | התקבל בפועל: ${actual_value:.2f}"
+        save_data(transactions_ws, transactions)
+        st.success(f"התחזית עודכנה כ־{status} עם סכום בפועל: ${actual_value:.2f}")
+else:
+    st.info("אין תחזיות לעדכון כרגע.")
 
