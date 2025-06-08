@@ -166,7 +166,6 @@ if page == "חזית":
 
     st.subheader("📊 גרף חודשי")
     chart_data = df_confirmed.groupby(['חודש', 'סוג'])['סכום'].sum().reset_index()
-    fig = px.bar(chart_data, x='חודש', y='סכום', color='סוג', barmode='group')
     st.plotly_chart(fig, use_container_width=True)
 
     st.subheader("🥧 פיזור לפי קטגוריה")
@@ -297,8 +296,7 @@ if not forecasted_summary.empty:
     fig.update_traces(texttemplate='%{text:.2f}', textposition='outside')
     fig.update_layout(xaxis_title='תאריך', yaxis_title='סכום', legend_title='סוג תחזית')
     st.plotly_chart(fig, use_container_width=True)
-else:
-    st.info("אין נתונים לגרף")
+
 
     st.subheader("🧾 טבלת תחזיות")
     st.dataframe(forecasted.sort_values(by='תאריך'), use_container_width=True)
