@@ -4,7 +4,7 @@ import datetime
 import gspread
 import os
 import json
-import plotly.express as px
+import plotly.express as pxכ
 from oauth2client.service_account import ServiceAccountCredentials
 
 # הגדרות עמוד
@@ -251,6 +251,7 @@ elif page == "רשומות":
 
 # ============================
 # ============================
+# ============================
 # עמוד תחזיות
 # ============================
 elif page == "תחזיות":
@@ -258,6 +259,7 @@ elif page == "תחזיות":
     df = transactions.copy()
     df['תאריך'] = pd.to_datetime(df['תאריך'], errors='coerce')
     forecasts = df[df['סטטוס'] == 'תחזית'].copy()
+    approved = df[df['סטטוס'] == 'אושר'].copy()
 
     st.subheader("✅ אישור תחזיות שהתממשו בפועל")
     forecast_df = forecasts.copy()
@@ -283,20 +285,27 @@ elif page == "תחזיות":
     from_date = st.date_input("מתאריך", today)
     to_date = st.date_input("עד תאריך", today + datetime.timedelta(days=30))
 
-    mask = (forecasts['תאריך'].dt.date >= from_date) & (forecasts['תאריך'].dt.date <= to_date)
-    filtered_forecasts = forecasts[mask]
-    st.dataframe(filtered_forecasts.sort_values(by='תאריך'), use_container_width=True)
+    mask = (df['תאריך'].dt.date >= from_date) & (df['תאריך'].dt.date <= to_date)
+    forecasted = df[mask & (df['סטטוס'].isin(['תחזית', 'אושר']))].copy()
 
-    st.subheader("📈 גרף תחזיות")
-    forecast_summary = filtered_forecasts.groupby(['תאריך', 'סוג'])['סכום'].sum().reset_index()
-    if not forecast_summary.empty:
-        fig = px.line(forecast_summary, x='תאריך', y='סכום', color='סוג', markers=True)
+    st.subheader("📈 גרף תחזית מול בפועל")
+    forecasted['label'] = forecasted['סטטוס'] + ' - ' + forecasted['קטגוריה']
+    forecasted_summary = forecasted.groupby(['תאריך', 'label'])['סכום'].sum().reset_index()
+    if not forecasted_summary.empty:
+        fig = px.bar(forecasted_summary, x='תאריך', y='סכום', color='label', barmode='group', text_auto='.2s')
+        fig.update_layout(xaxis_title='תאריך', yaxis_title='סכום', legend_title='סוג תחזית')
         st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("אין נתונים לגרף")
+
+    st.subheader("🧾 טבלת תחזיות")
+    st.dataframe(forecasted.sort_values(by='תאריך'), use_container_width=True)
 
     st.subheader("✏️ עריכת תחזית")
-    if not filtered_forecasts.empty:
-        row_to_edit = st.selectbox("בחר שורה לעריכה", options=filtered_forecasts.index.tolist())
-        row = filtered_forecasts.loc[row_to_edit]
+    editable_forecasts = forecasted[forecasted['סטטוס'] == 'תחזית']
+    if not editable_forecasts.empty:
+        row_to_edit = st.selectbox("בחר שורה לעריכה", options=editable_forecasts.index.tolist())
+        row = editable_forecasts.loc[row_to_edit]
         with st.form("edit_form"):
             new_date = st.date_input("תאריך", row['תאריך'].date())
             new_kind = st.selectbox("סוג", ['הכנסה', 'הוצאה'], index=['הכנסה', 'הוצאה'].index(row['סוג']))
