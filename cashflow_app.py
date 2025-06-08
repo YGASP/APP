@@ -297,7 +297,6 @@ approved_only['label'] = 'בפועל - ' + approved_only['קטגוריה']
 
 combined = pd.concat([forecast_only, approved_only])
 forecasted_summary = combined.groupby(['תאריך', 'label'])['סכום'].sum().reset_index()
-
     forecasted['label'] = forecasted['סטטוס'] + ' - ' + forecasted['קטגוריה']
     forecasted_summary = forecasted.groupby(['תאריך', 'label'])['סכום'].sum().reset_index()
   if not forecasted_summary.empty:
