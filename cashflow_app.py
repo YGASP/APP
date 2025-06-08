@@ -257,6 +257,28 @@ elif page == "תחזיות":
     df = transactions.copy()
     df['תאריך'] = pd.to_datetime(df['תאריך'], errors='coerce')
     forecasts = df[df['סטטוס'] == 'תחזית'].copy()
+st.subheader("✅ אישור תחזיות שהתממשו בפועל")
+
+# סינון התחזיות
+forecast_df = transactions[transactions['סטטוס'] == 'תחזית'].copy()
+forecast_df['אישור'] = False
+
+if not forecast_df.empty:
+    # הצגת טבלה עם תיבת סימון
+    edited_df = st.data_editor(
+        forecast_df[['תאריך', 'סכום', 'מטבע', 'מקור', 'קטגוריה', 'תיאור', 'אישור']],
+        use_container_width=True,
+        key="forecast_approval_editor"
+    )
+
+    # כפתור עדכון התחזיות שאושרו
+    if st.button("📥 עדכן תחזיות שאושרו"):
+        approved_indexes = edited_df[edited_df['אישור']].index
+        transactions.loc[approved_indexes, 'סטטוס'] = 'אושר'
+        save_data(transactions_ws, transactions)
+        st.success(f"עודכנו {len(approved_indexes)} תחזיות כמאושרות")
+else:
+    st.info("אין תחזיות לאישור כרגע.")
 
     st.subheader("📆 טווח תאריכים")
     today = datetime.date.today()
