@@ -250,6 +250,7 @@ elif page == "רשומות":
     st.dataframe(df[mask].sort_values(by='תאריך', ascending=False), use_container_width=True)
 
 # ============================
+# ============================
 # עמוד תחזיות
 # ============================
 elif page == "תחזיות":
@@ -257,28 +258,25 @@ elif page == "תחזיות":
     df = transactions.copy()
     df['תאריך'] = pd.to_datetime(df['תאריך'], errors='coerce')
     forecasts = df[df['סטטוס'] == 'תחזית'].copy()
-st.subheader("✅ אישור תחזיות שהתממשו בפועל")
 
-# סינון התחזיות
-forecast_df = transactions[transactions['סטטוס'] == 'תחזית'].copy()
-forecast_df['אישור'] = False
+    st.subheader("✅ אישור תחזיות שהתממשו בפועל")
+    forecast_df = forecasts.copy()
+    forecast_df['אישור'] = False
 
-if not forecast_df.empty:
-    # הצגת טבלה עם תיבת סימון
-    edited_df = st.data_editor(
-        forecast_df[['תאריך', 'סכום', 'מטבע', 'מקור', 'קטגוריה', 'תיאור', 'אישור']],
-        use_container_width=True,
-        key="forecast_approval_editor"
-    )
+    if not forecast_df.empty:
+        edited_df = st.data_editor(
+            forecast_df[['תאריך', 'סכום', 'מטבע', 'מקור', 'קטגוריה', 'תיאור', 'אישור']],
+            use_container_width=True,
+            key="forecast_approval_editor"
+        )
 
-    # כפתור עדכון התחזיות שאושרו
-    if st.button("📥 עדכן תחזיות שאושרו"):
-        approved_indexes = edited_df[edited_df['אישור']].index
-        transactions.loc[approved_indexes, 'סטטוס'] = 'אושר'
-        save_data(transactions_ws, transactions)
-        st.success(f"עודכנו {len(approved_indexes)} תחזיות כמאושרות")
-else:
-    st.info("אין תחזיות לאישור כרגע.")
+        if st.button("📥 עדכן תחזיות שאושרו"):
+            approved_indexes = edited_df[edited_df['אישור']].index
+            transactions.loc[approved_indexes, 'סטטוס'] = 'אושר'
+            save_data(transactions_ws, transactions)
+            st.success(f"עודכנו {len(approved_indexes)} תחזיות כמאושרות")
+    else:
+        st.info("אין תחזיות לאישור כרגע.")
 
     st.subheader("📆 טווח תאריכים")
     today = datetime.date.today()
@@ -295,16 +293,9 @@ else:
         fig = px.line(forecast_summary, x='תאריך', y='סכום', color='סוג', markers=True)
         st.plotly_chart(fig, use_container_width=True)
 
-    st.subheader("✅ אישור תחזיות")
-    rows_to_update = st.multiselect("בחר תחזיות לאישור", filtered_forecasts.index.tolist())
-    if st.button("אשר תחזיות"):
-        transactions.loc[rows_to_update, 'סטטוס'] = 'אושר'
-        save_data(transactions_ws, transactions)
-        st.success("✨ התחזיות אושרו!")
-
     st.subheader("✏️ עריכת תחזית")
-    row_to_edit = st.selectbox("בחר שורה לעריכה", options=filtered_forecasts.index.tolist())
-    if row_to_edit is not None:
+    if not filtered_forecasts.empty:
+        row_to_edit = st.selectbox("בחר שורה לעריכה", options=filtered_forecasts.index.tolist())
         row = filtered_forecasts.loc[row_to_edit]
         with st.form("edit_form"):
             new_date = st.date_input("תאריך", row['תאריך'].date())
@@ -319,42 +310,23 @@ else:
                 transactions.loc[row_to_edit] = [new_date, new_kind, new_amount, new_currency, new_source, new_category, new_description, 'תחזית']
                 save_data(transactions_ws, transactions)
                 st.success("✅ התחזית עודכנה!")
-                st.subheader("📊 עדכון סכום בפועל / דחיית תחזית")
 
-editable_df = transactions[transactions['סטטוס'] == 'תחזית'].copy()
-if not editable_df.empty:
-    selected_index = st.selectbox("בחר תחזית לעדכון:", editable_df.index, format_func=lambda i: f"{editable_df.at[i, 'תאריך']} | {editable_df.at[i, 'קטגוריה']} | ${editable_df.at[i, 'סכום']}")
-    selected_row = editable_df.loc[selected_index]
+    st.subheader("📊 עדכון סכום בפועל / דחיית תחזית")
+    editable_df = forecasts.copy()
+    if not editable_df.empty:
+        selected_index = st.selectbox("בחר תחזית לעדכון:", editable_df.index, format_func=lambda i: f"{editable_df.at[i, 'תאריך']} | {editable_df.at[i, 'קטגוריה']} | ${editable_df.at[i, 'סכום']}")
+        selected_row = editable_df.loc[selected_index]
 
-    st.markdown(f"### ✏️ תחזית נבחרת: {selected_row['קטגוריה']} בתאריך {selected_row['תאריך']}")
-    actual_value = st.number_input("💰 כמה באמת התקבל?", min_value=0.0, format="%.2f", value=selected_row['סכום'])
-    status = st.selectbox("🟢 מה הסטטוס?", ["אושר", "נדחה"])
+        st.markdown(f"### ✏️ תחזית נבחרת: {selected_row['קטגוריה']} בתאריך {selected_row['תאריך']}")
+        actual_value = st.number_input("💰 כמה באמת התקבל?", min_value=0.0, format="%.2f", value=selected_row['סכום'])
+        status = st.selectbox("🟢 מה הסטטוס?", ["אושר", "נדחה"])
 
-    if st.button("💾 שמור עדכון"):
-        transactions.at[selected_index, 'סכום'] = actual_value
-        transactions.at[selected_index, 'סטטוס'] = status
-        transactions.at[selected_index, 'תיאור'] += f" | התקבל בפועל: ${actual_value:.2f}"
-        save_data(transactions_ws, transactions)
-        st.success(f"התחזית עודכנה כ־{status} עם סכום בפועל: ${actual_value:.2f}")
-else:
-    st.info("אין תחזיות לעדכון כרגע.")
-st.subheader("📊 עדכון סכום בפועל / דחיית תחזית")
-
-editable_df = transactions[transactions['סטטוס'] == 'תחזית'].copy()
-if not editable_df.empty:
-    selected_index = st.selectbox("בחר תחזית לעדכון:", editable_df.index, format_func=lambda i: f"{editable_df.at[i, 'תאריך']} | {editable_df.at[i, 'קטגוריה']} | ${editable_df.at[i, 'סכום']}")
-    selected_row = editable_df.loc[selected_index]
-
-    st.markdown(f"### ✏️ תחזית נבחרת: {selected_row['קטגוריה']} בתאריך {selected_row['תאריך']}")
-    actual_value = st.number_input("💰 כמה באמת התקבל?", min_value=0.0, format="%.2f", value=selected_row['סכום'])
-    status = st.selectbox("🟢 מה הסטטוס?", ["אושר", "נדחה"])
-
-    if st.button("💾 שמור עדכון"):
-        transactions.at[selected_index, 'סכום'] = actual_value
-        transactions.at[selected_index, 'סטטוס'] = status
-        transactions.at[selected_index, 'תיאור'] += f" | התקבל בפועל: ${actual_value:.2f}"
-        save_data(transactions_ws, transactions)
-        st.success(f"התחזית עודכנה כ־{status} עם סכום בפועל: ${actual_value:.2f}")
-else:
-    st.info("אין תחזיות לעדכון כרגע.")
-
+        if st.button("💾 שמור עדכון"):
+            original_value = selected_row['סכום']
+            transactions.at[selected_index, 'סכום'] = actual_value
+            transactions.at[selected_index, 'סטטוס'] = status
+            transactions.at[selected_index, 'תיאור'] += f" | סכום צפוי: ${original_value:.2f} | בפועל: ${actual_value:.2f}"
+            save_data(transactions_ws, transactions)
+            st.success(f"התחזית עודכנה כ־{status} עם סכום בפועל: ${actual_value:.2f}")
+    else:
+        st.info("אין תחזיות לעדכון כרגע.")
